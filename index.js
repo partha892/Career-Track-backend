@@ -1,42 +1,65 @@
-import  express from 'express'
-import dotenv from "dotenv"
-import { connectDB } from './src/config/db.js'
-import router from './src/routers/authRoutes.js'
-import cookieParser from 'cookie-parser'
-import { applicationRouter } from './src/routers/applicationRoutes.js'
-import cors from "cors"
-dotenv.config()
 
+import express from "express";
+import dotenv from "dotenv";
+import cors from "cors";
+import cookieParser from "cookie-parser";
 
-const app = express()
-const port = process.env.PORT|| 3000
+import { connectDB } from "./src/config/db.js";
+import router from "./src/routers/authRoutes.js";
+import { applicationRouter } from "./src/routers/applicationRoutes.js";
 
+dotenv.config();
 
+const app = express();
+const port = process.env.PORT || 3000;
 
+// Trust Vercel proxy
+app.set("trust proxy", 1);
 
-app.get('/', (req, res) => {
-  res.send('Hello World!')
-})
-app.use(cookieParser());
+// Allowed frontend URLs
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "https://career-track-frontend-sigma.vercel.app",
+];
 
-// 2. Middleware
+// CORS configuration
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`CORS blocked origin: ${origin}`));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+// Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(cors({
-    origin: "https://career-track-frontend-sigma.vercel.app",
-    credentials: true
-}));
 
-app.set("trust proxy", 1);
+// Health check
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "CareerTrack Backend is running!",
+  });
+});
 
-// 3. Routes
+// API routes
 app.use("/api/v1/user", router);
 app.use("/api/v1/application", applicationRouter);
 
+// Connect database
+connectDB();
 
-connectDB()
-
+// Start server
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
-})
+  console.log(`CareerTrack server running on port ${port}`);
+});
