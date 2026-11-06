@@ -1,51 +1,51 @@
-
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { User } from "../models/User.js";
+import dotenv from "dotenv";
 
-const isProduction = process.env.NODE_ENV === "production";
+dotenv.config();
 
-const cookieOptions = {
-  httpOnly: true,
-  secure: isProduction,
-  sameSite: isProduction ? "none" : "lax",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-  path: "/",
-};
+
+
 
 export const signupUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
+    // Basic validation
     if (!name || !email || !password) {
       return res.status(400).json({
+        status: 400,
         error: true,
         message: "Name, email, and password are required.",
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
-
-    const existingUser = await User.findOne({
-      email: normalizedEmail,
-    });
-
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(409).json({
+        status: 409,
         error: true,
         message: "User already exists with this email.",
       });
     }
 
-    const newUser = await User.create({
-      name: name.trim(),
-      email: normalizedEmail,
+
+    // Create user
+    const newUser = new User({
+      name,
+      email,
       password,
     });
 
+    await newUser.save();
+    // Respond with success
     return res.status(201).json({
+      status: 201,
       error: false,
-      message: "User registered successfully.",
+      message: "User registered successfully. ",
       data: {
         id: newUser._id,
         name: newUser.name,
@@ -53,14 +53,16 @@ export const signupUser = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Signup Error:", error);
-
+    console.error(error);
     return res.status(500).json({
+      status: 500,
       error: true,
       message: error.message || "Internal Server Error",
     });
   }
 };
+
+
 
 export const loginUser = async (req, res) => {
   try {
@@ -73,46 +75,41 @@ export const loginUser = async (req, res) => {
       });
     }
 
-    if (!process.env.JWT_SECRET) {
-      throw new Error("JWT_SECRET is not configured.");
-    }
-
-    const normalizedEmail = email.trim().toLowerCase();
-
-    const findUser = await User.findOne({
-      email: normalizedEmail,
-    });
-
+    const findUser = await User.findOne({ email });
     if (!findUser) {
-      return res.status(401).json({
+      return res.status(400).json({
         error: true,
         message: "You are not registered.",
       });
     }
 
-    const isMatch = await bcrypt.compare(
-      password,
-      findUser.password
-    );
-
+    const isMatch = await bcrypt.compare(password, findUser.password);
     if (!isMatch) {
       return res.status(401).json({
         error: true,
         message: "Invalid credentials. Please try again.",
       });
     }
+   
 
-    const token = jwt.sign(
-      { userId: findUser._id.toString() },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = jwt.sign({ userId: findUser._id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    };
 
     res.cookie("token", token, cookieOptions);
 
+
+
     return res.status(200).json({
-      error: false,
       message: "Login successful.",
+      token,
       data: {
         id: findUser._id,
         name: findUser.name,
@@ -121,9 +118,9 @@ export const loginUser = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Login Error:", error);
-
+    console.error(error);
     return res.status(500).json({
+      status: 500,
       error: true,
       message: error.message || "Internal Server Error",
     });
@@ -132,21 +129,12 @@ export const loginUser = async (req, res) => {
 
 export const profileUser = async (req, res) => {
   try {
-    const userId = req.user?.userId;
-
-    if (!userId) {
-      return res.status(401).json({
-        error: true,
-        message: "Unauthorized. Please login.",
-      });
-    }
-
-    const user = await User.findById(userId).select("-password");
+    const user = await User.findById(req.user.id).select("-password");
 
     if (!user) {
-      return res.status(404).json({
+      return res.status(401).json({
         error: true,
-        message: "User not found.",
+        message: "You are not a registered user.",
       });
     }
 
@@ -161,9 +149,9 @@ export const profileUser = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Profile Error:", error);
-
+    console.error(error);
     return res.status(500).json({
+      status: 500,
       error: true,
       message: error.message || "Internal Server Error",
     });
@@ -172,23 +160,24 @@ export const profileUser = async (req, res) => {
 
 export const logoutUser = async (req, res) => {
   try {
-    res.clearCookie("token", {
+    res.cookie("token", "", {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
-      path: "/",
+      secure: true,
+      expires: new Date(0),
+      sameSite: "strict",
     });
 
     return res.status(200).json({
-      error: false,
+      success: true,
       message: "Logout successful.",
     });
   } catch (error) {
-    console.error("Logout Error:", error);
-
+    console.error(error);
     return res.status(500).json({
+      status: 500,
       error: true,
       message: error.message || "Internal Server Error",
     });
   }
 };
+
